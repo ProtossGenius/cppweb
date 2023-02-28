@@ -1,0 +1,143 @@
+#!python3
+#-*- coding:utf-8 -*-#
+import json
+import os 
+from colorama import  init, Fore, Back, Style
+import threading
+init(autoreset=True)
+class Colored(object):
+    #  前景色:红色  背景色:默认
+    def red(self, s):
+        return Fore.RED + s + Fore.RESET
+    #  前景色:绿色  背景色:默认
+    def green(self, s):
+        return Fore.GREEN + s + Fore.RESET
+    #  前景色:黄色  背景色:默认
+    def yellow(self, s):
+        return Fore.YELLOW + s + Fore.RESET
+
+color = Colored()
+
+def info(msg):
+    print(color.green('[info]'+msg))
+
+def error(msg):
+    print(color.red('[error]' + msg))
+
+def warn(msg):
+    print(color.yellow('[warn]'+msg))
+
+third_part = './third_part'
+os.system('rm -rf %s' % third_part)
+os.mkdir(third_part)
+
+def getDirName(repository):
+   splitlist= repository.split('/')
+   return splitlist[len(splitlist)-1]
+
+def oget(obj, key, dft=''):
+    if key in obj:
+        return obj[key]
+
+    return dft
+
+def install_git_cmake_rely(repository, dirName, rely):
+    install_git(repository, dirName)
+    os.system('cd /tmp/%s && cmake . && make && sudo make install' % dirName)
+
+def install_wget_cmake_rely(repository, dirName , rely):
+    install_wget(repository, dirName)
+    os.system('cd /tmp/%s && cmake . && make && sudo make install' % dirName)
+
+def install_git_binary(repository, dirName, rely):
+    branch = oget(rely, 'branch', 'release')
+    os.system('cd /tmp && git clone https://%s --branch %s %s' % (repository, branch, dirName))
+    os.system('rm -rf /tmp/%s/.git' % (dirName))
+    os.system('cp -r /tmp/%s/* ./%s/' % (dirName, third_part))
+
+def install_wget_binary(repository, dirName, rely):
+    os.system('cd /tmp && wget %s %s' % (repository, dirName))
+    os.system('cp -r /tmp/%s/* ./%s/' % (dirName, third_part))
+
+def insstall_git_make_rely(repository, dirName, rely):
+    install_git(repository)
+    os.system('cd /tmp/%s && make && sudo make install' % dirName)
+
+def insstall_wget_make_rely(repository, dirName, rely):
+    install_wget(repository, dirName)
+    os.system('cd /tmp/%s && make && sudo make install' % dirName)
+
+def install_git(repository, dirName, rely=None):
+    os.system('cd /tmp && git clone https://%s %s' %(repository, dirName))    
+
+def install_wget(repository, dirName, rely=None):
+    os.system('cd /tmp && wget %s %s' % (repository, dirName))
+
+
+
+method_funcs = {
+        'git': install_git,
+        'git_binary': install_git_binary,
+        'git_cmake':install_git_cmake_rely,
+        'git_make':insstall_git_make_rely,
+        'wget':install_wget,
+        'wget_binary':install_wget_binary,
+        'wget_cmake':install_wget_cmake_rely,
+        'wget_make':insstall_wget_make_rely
+        }
+def install_funs(method, repository, dirName, rely):
+    if method in  method_funcs:
+        method_funcs[method](repository, dirName, rely)
+    else:
+        info("not support method %s, running default git_binary" % method)
+        install_git_binary(repository, dirName, rely)
+
+def install_rely(rely, index):
+    if 'repository' not in rely:
+        warn("""there is an error, repository not exist.
+                whose index in rely.json is %d""" % count)
+        return
+    repository= rely['repository']
+    method = oget(rely, 'method', 'git_binary')
+    info("installing repository %s method is %s " % (repository, method))
+    dirName = oget(rely, 'dir_name', getDirName(repository))
+    os.system("rm -rf /tmp/" + dirName)
+    install_funs(method, repository, dirName, rely)
+    if 'commands' not in rely :
+        return
+    commands= rely['commands']
+    if isinstance(commands, str):
+        os.system(commands)
+        return
+    if not isinstance(commands, list):
+        warn("unexcept commands type when installing [%s], its value is : %s" % (repository, commands))
+        return
+    for cmd in commands:
+        if not isinstance(cmd, str):
+            warn("unexcept command when installing [%s], its value is : %s" % (repository, cmd))
+            continue
+        os.system(cmd)
+
+
+
+f = open("./rely.json", 'r')
+relys = f.read()
+relyList = json.loads(relys)
+index = 0
+
+threads=[]
+os.system("rm -rf ./third_part/include/* ./third_part/lib/*")
+## may use multi-thread will run faster.
+for rely in relyList:
+    print(rely)
+    t = threading.Thread(target=install_rely,args=(rely, index))
+    index = index + 1
+    threads.append(t)
+    t.start()
+
+for thread in threads:
+    thread.join()
+
+info("update finish")
+
+
